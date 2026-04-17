@@ -1,0 +1,172 @@
+<!DOCTYPE html> 
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Colombia en datos</title>
+  <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist@2.27.0/plotly.min.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<main>
+
+  <div class="header">
+    <div class="header-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <path d="M3 9h18M9 21V9"/>
+      </svg>
+    </div>
+    <div>
+      <h1>Mandatos presidenciales de los ultimos años</h1>
+      <p>Se hace uso de apicolo,nia.com para mostrar los datos</p>
+      <p>Joseph De La Rans</p>
+    </div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <p class="stat-label">Total presidentes</p>
+      <p id="stat-total" class="stat-value">—</p>
+    </div>
+    <div class="stat-card">
+      <p class="stat-label">Partidos distintos</p>
+      <p id="stat-partidos" class="stat-value">—</p>
+    </div>
+    <div class="stat-card">
+      <p class="stat-label">Más mandatos</p>
+      <p id="stat-top" class="stat-value small">—</p>
+    </div>
+  </div>
+
+  <div id="loading">
+    <div class="spinner"></div>
+    Cargando datos…
+  </div>
+  <div id="error"></div>
+
+  <div id="charts" style="display:none;">
+    <div class="chart-card">
+      <div id="chart-bar" style="width:100%;height:380px;"></div>
+    </div>
+    <div class="chart-card">
+      <div id="chart-pie" style="width:100%;height:360px;"></div>
+    </div>
+  </div>
+
+</main>
+
+<footer>By: Joseph De La Rans</footer>
+
+<script>
+(async () => {
+  const blue   = '#2563eb';
+
+  // COLORES FIJOS (SIN GRADIENTE)
+  const colors = [
+    '#2563eb','#3b82f6','#60a5fa','#93c5fd','#bfdbfe',
+    '#1d4ed8','#1e40af','#1e3a8a','#172554','#dbeafe'
+  ];
+
+  const fontColor = '#1e293b';
+  const gridColor = 'rgba(0,0,0,0.06)';
+  const paperBg   = 'rgba(0,0,0,0)';
+  const plotBg    = '#f8fafc';
+
+  const baseLayout = {
+    paper_bgcolor: paperBg,
+    plot_bgcolor: plotBg,
+    font: { family: "'Segoe UI', sans-serif", color: fontColor, size: 12 },
+    margin: { t: 52, b: 60, l: 48, r: 24 },
+    xaxis: { gridcolor: gridColor, zerolinecolor: gridColor },
+    yaxis: { gridcolor: gridColor, zerolinecolor: gridColor },
+    showlegend: false,
+  };
+
+  try {
+    const res = await fetch('https://api-colombia.com/api/v1/President?pageSize=100');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const raw = await res.json();
+    const data = Array.isArray(raw) ? raw : (raw.data || raw.items || []);
+    if (!data.length) throw new Error('Sin datos');
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('charts').style.display = 'block';
+
+    document.getElementById('stat-total').textContent = data.length;
+
+    const partidos = {};
+    data.forEach(p => {
+      const party = p.politicalParty || p.partido || 'Sin partido';
+      partidos[party] = (partidos[party] || 0) + 1;
+    });
+
+    const sorted = Object.entries(partidos).sort((a, b) => b[1] - a[1]);
+
+    document.getElementById('stat-partidos').textContent = sorted.length;
+    const top = sorted[0];
+    document.getElementById('stat-top').textContent = top ? `${top[0].slice(0, 28)} (${top[1]})` : '—';
+
+    const barData = sorted.slice(0, 12);
+
+    Plotly.newPlot('chart-bar', [{
+      type: 'bar',
+      x: barData.map(x => x[1]),
+      y: barData.map(x => x[0]),
+      orientation: 'h',
+      marker: {
+        color: colors.slice(0, barData.length)
+      },
+      text: barData.map(x => x[1]),
+      textposition: 'outside',
+    }], {
+      ...baseLayout,
+      title: { text: 'Presidentes por partido político', font: { size: 14, color: fontColor } },
+      margin: { t: 52, b: 44, l: 175, r: 48 },
+      xaxis: { ...baseLayout.xaxis, title: 'Cantidad' },
+      yaxis: { ...baseLayout.yaxis, automargin: true },
+      height: 380,
+    }, { responsive: true, displayModeBar: false });
+
+    const pieSlices = sorted.slice(0, 8);
+    const othersSum = sorted.slice(8).reduce((s, x) => s + x[1], 0);
+
+    const pieLabels = pieSlices.map(x => x[0]);
+    const pieVals   = pieSlices.map(x => x[1]);
+
+    if (othersSum > 0) {
+      pieLabels.push('Otros');
+      pieVals.push(othersSum);
+    }
+
+    Plotly.newPlot('chart-pie', [{
+      type: 'pie',
+      labels: pieLabels,
+      values: pieVals,
+      hole: 0.42,
+      marker: {
+        colors: colors.slice(0, pieLabels.length),
+        line: { color: 'white', width: 2 },
+      },
+      textinfo: 'label+percent',
+      textfont: { size: 11 },
+      pull: pieLabels.map((_, i) => i === 0 ? 0.04 : 0),
+    }], {
+      ...baseLayout,
+      title: { text: 'Distribución por partido (top 8 + otros)', font: { size: 14, color: fontColor } },
+      showlegend: true,
+      legend: { font: { size: 11, color: fontColor }, x: 1.02, y: 0.5 },
+      height: 360,
+    }, { responsive: true, displayModeBar: false });
+
+  } catch (e) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('error').style.display = 'block';
+    document.getElementById('error').textContent = 'Error al cargar datos: ' + e.message;
+  }
+})();
+</script>
+
+</body>
+</html>
